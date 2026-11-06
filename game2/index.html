@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Center TCG</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PeerJS for online multiplayer -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Zen Kaku Gothic New', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .font-arcade {
+      font-family: 'DotGothic16', sans-serif;
+    }
+
+    /* Glow & Visual Depth Effects */
+    .glow-cyan { box-shadow: 0 0 20px rgba(6, 182, 212, 0.35); }
+    .glow-gold { box-shadow: 0 0 25px rgba(245, 158, 11, 0.45); }
+    .glow-rose { box-shadow: 0 0 25px rgba(244, 63, 94, 0.45); }
+    .glow-purple { box-shadow: 0 0 20px rgba(168, 85, 247, 0.35); }
+
+    /* Keyframe Animations */
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0) scale(1); }
+      50% { opacity: 1; transform: translateY(-30px) scale(1.25); }
+      100% { opacity: 0; transform: translateY(-60px) scale(1); }
+    }
+    .animate-float-text {
+      animation: floatUp 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes cardFlip {
+      0% { transform: rotateY(180deg) scale(0.85); }
+      100% { transform: rotateY(0deg) scale(1); }
+    }
+    .animate-card-flip {
+      animation: cardFlip 0.45s ease-out forwards;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-7px) rotate(-1deg); }
+      40% { transform: translateX(7px) rotate(1deg); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+    .animate-shake {
+      animation: shake 0.4s ease-in-out;
+    }
+
+    /* Card Item Hover & Selection States */
+    .card-item {
+      transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .card-item:hover:not(.disabled) {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.6);
+    }
+    .card-selected {
+      transform: translateY(-10px) scale(1.03) !important;
+      border-color: #f59e0b !important;
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.7) !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #273549;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3b4f6c;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
+
+  <!-- ==================== HEADER BAR ==================== -->
+  <header class="bg-slate-900/90 border-b border-slate-800/80 px-4 py-2.5 sticky top-0 z-30 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 via-teal-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/25">
+          <span class="text-xl">⚔️</span>
+        </div>
+        <div>
+          <h1 class="font-arcade text-lg sm:text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-amber-300 to-rose-400">
+            GAME CENTER TCG
+          </h1>
+          <p class="text-[11px] text-slate-400 hidden sm:block">10-Card Tactical Turn-Based System</p>
+        </div>
+      </div>
+
+      <!-- Turn Counter -->
+      <div class="flex items-center space-x-2 bg-slate-950/80 px-4 py-1 rounded-full border border-slate-800 shadow-inner">
+        <span class="text-xs text-slate-400 font-mono">TURN</span>
+        <span id="turn-display" class="font-arcade text-cyan-400 text-lg font-bold">1</span>
+      </div>
+
+      <!-- Top Controls -->
+      <div class="flex items-center space-x-2">
+        <button id="btn-sound" onclick="toggleSound()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="サウンド切り替え">
+          <span id="sound-icon">🔊</span>
+        </button>
+        <button onclick="openRulesModal()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 transition">
+          📖 ルール
+        </button>
+        <button onclick="confirmRestartModal()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-950/60 hover:bg-red-900/70 text-red-300 border border-red-500/40 transition">
+          🔄 リセット
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== BATTLE ARENA ==================== -->
+  <main class="max-w-6xl w-full mx-auto p-3 sm:p-5 flex-1 flex flex-col gap-4 justify-between">
+
+    <!-- 1. CPU OPPONENT SECTION -->
+    <section id="cpu-section" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 relative overflow-hidden shadow-xl">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <!-- CPU Info & Health Bar -->
+        <div class="flex items-center space-x-4 w-full sm:w-1/2">
+          <div class="relative">
+            <div class="w-13 h-13 rounded-2xl bg-gradient-to-tr from-purple-600 to-rose-600 p-0.5 shadow-lg shadow-purple-500/20">
+              <div id="opponent-avatar" class="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-2xl">
+                🤖
+              </div>
+            </div>
+            <!-- Focus Buff Badge -->
+            <span id="cpu-focus-badge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-black font-extrabold text-[10px] px-1.5 py-0.5 rounded-full shadow border border-amber-300 animate-bounce">
+              🧘 2x
+            </span>
+          </div>
+
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-slate-200 text-sm flex items-center gap-1.5">
+                <span id="opponent-name">ARCADE MASTER</span>
+                <span id="opponent-type" class="text-xs text-purple-400 font-normal">(CPU)</span>
+              </span>
+              <span id="cpu-hp-text" class="font-arcade text-sm text-purple-300">100 / 100 HP</span>
+            </div>
+            <!-- Dynamic HP Bar -->
+            <div class="w-full bg-slate-950 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+              <div id="cpu-hp-bar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CPU Hand Card Backs -->
+        <div class="flex items-center gap-2">
+          <span id="cpu-hand-label" class="text-xs text-slate-500 hidden md:inline font-mono">CPU HAND:</span>
+          <div id="cpu-hand-display" class="flex gap-2">
+            <!-- JS Rendered -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating Combat Numbers Container -->
+      <div id="cpu-float-container" class="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none z-20"></div>
+    </section>
+
+    <!-- 2. CENTER STAGE & BATTLE TICKER -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch my-1">
+
+      <!-- Played Card Reveal Slots (7 cols on LG) -->
+      <div class="lg:col-span-7 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between relative min-h-[200px] sm:min-h-[220px]">
+        <div class="text-center text-[11px] text-slate-500 font-bold uppercase tracking-wider mb-2">
+          バトルフィールド (オープン判定ステージ)
+        </div>
+
+        <div class="flex items-center justify-around gap-2 my-auto">
+          <!-- Player Slot -->
+          <div class="flex flex-col items-center">
+            <span class="text-xs text-cyan-400 font-bold mb-1">あなた</span>
+            <div id="player-played-slot" class="w-28 sm:w-36 h-36 sm:h-44 rounded-xl border-2 border-dashed border-slate-700 bg-slate-950/60 flex flex-col items-center justify-center text-slate-600 transition-all">
+              <span class="text-2xl mb-1">❓</span>
+              <span class="text-xs">カード選択中</span>
+            </div>
+          </div>
+
+          <!-- VS Badge -->
+          <div class="flex flex-col items-center">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center font-arcade font-bold text-slate-950 text-sm shadow-lg shadow-amber-500/20">
+              VS
+            </div>
+          </div>
+
+          <!-- CPU Slot -->
+          <div class="flex flex-col items-center">
+            <span id="cpu-slot-label" class="text-xs text-purple-400 font-bold mb-1">CPU</span>
+            <div id="cpu-played-slot" class="w-28 sm:w-36 h-36 sm:h-44 rounded-xl border-2 border-dashed border-slate-700 bg-slate-950/60 flex flex-col items-center justify-center text-slate-600 transition-all">
+              <span class="text-2xl mb-1">❓</span>
+              <span class="text-xs">思考中...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Banner -->
+        <div id="arena-status-banner" class="mt-3 text-center py-1.5 px-3 rounded-lg bg-slate-950/80 border border-slate-800 text-xs text-slate-300 font-medium">
+          手札からカードを選択し「準備完了」ボタンを押してください
+        </div>
+      </div>
+
+      <!-- Live Commentary Battle Ticker (5 cols on LG) -->
+      <div class="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-col h-[220px] sm:h-[240px]">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800 mb-2 shrink-0">
+          <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            実況ログ Console
+          </span>
+          <button onclick="clearLogs()" class="text-[10px] text-slate-500 hover:text-slate-300 transition">クリア</button>
+        </div>
+
+        <div id="battle-log" class="flex-1 min-h-0 overflow-y-auto space-y-1.5 text-xs font-mono pr-1">
+          <!-- Log lines inserted by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. PLAYER SECTION -->
+    <section id="player-section" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 relative shadow-2xl">
+      <!-- Player Info & Health Bar -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800/80">
+        <div class="flex items-center space-x-4 w-full sm:w-1/2">
+          <div class="relative">
+            <div class="w-13 h-13 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-0.5 shadow-lg shadow-cyan-500/20">
+              <div class="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center text-2xl">
+                👤
+              </div>
+            </div>
+            <!-- Focus Buff Badge -->
+            <span id="player-focus-badge" class="hidden absolute -top-2 -right-2 bg-amber-500 text-black font-extrabold text-[10px] px-1.5 py-0.5 rounded-full shadow border border-amber-300 animate-bounce">
+              🧘 2x
+            </span>
+          </div>
+
+          <div class="flex-1">
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                プレイヤー (あなた)
+              </span>
+              <span id="player-hp-text" class="font-arcade text-sm text-cyan-300">100 / 100 HP</span>
+            </div>
+            <!-- Dynamic HP Bar -->
+            <div class="w-full bg-slate-950 h-3.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+              <div id="player-hp-bar" class="bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 h-full rounded-full transition-all duration-500" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ready Button -->
+        <div class="w-full sm:w-auto flex justify-end">
+          <button id="btn-ready" disabled onclick="handleReadyClick()" 
+            class="w-full sm:w-48 py-3 px-6 rounded-xl font-bold text-sm tracking-wider transition-all flex items-center justify-center gap-2 bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed">
+            <span>準備完了</span>
+            <span class="text-base">🚀</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Player Hand Container -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+            🎴 あなたの手札 (3枚選択)
+          </span>
+          <span class="text-[11px] text-slate-500">※使用後のカードは山札へ戻り毎ターンシャッフルされます</span>
+        </div>
+
+        <div id="player-hand-container" class="grid grid-cols-1 sm:grid-cols-3 gap-3 min-h-[130px]">
+          <!-- JS Rendered -->
+        </div>
+      </div>
+
+      <!-- Floating Combat Numbers Container -->
+      <div id="player-float-container" class="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none z-20"></div>
+    </section>
+
+  </main>
+
+  <!-- ==================== FOOTER ==================== -->
+  <footer class="text-center py-2.5 text-slate-600 text-xs border-t border-slate-900 bg-slate-950">
+    Game Center TCG &copy; 2026 - Compact Tactical Card Game
+  </footer>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- 0. MODE SELECT MODAL -->
+  <div id="modal-mode-select" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-cyan-500/50 rounded-2xl p-5 max-w-md w-full shadow-2xl glow-cyan">
+      <div class="text-center pb-3 border-b border-slate-800 mb-4">
+        <h3 class="font-arcade text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-amber-300 to-rose-400">対戦モード選択</h3>
+        <p class="text-xs text-slate-400 mt-1">遊び方を選んでね！</p>
+      </div>
+      <div class="bg-slate-950/70 rounded-xl border border-slate-800 p-4 mb-3">
+        <p class="font-bold text-slate-100 text-sm mb-1">🤖 一人で対戦</p>
+        <p class="text-xs text-slate-400 mb-3">CPU（ARCADE MASTER）相手に練習できます</p>
+        <button onclick="startSoloFromModal()" class="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-lg shadow-cyan-500/30 transition">🤖 CPUと対戦</button>
+      </div>
+      <div class="bg-slate-950/70 rounded-xl border border-slate-800 p-4 mb-3">
+        <p class="font-bold text-slate-100 text-sm mb-1">🌐 友達と対戦</p>
+        <p class="text-xs text-slate-400 mb-3">好きな合言葉を決めて入力してね！（game1と共通仕様）</p>
+        <input id="room-id-input" type="text" placeholder="例: tanaka123" class="w-full px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 text-sm text-center placeholder:text-slate-600 focus:border-cyan-500 outline-none mb-3">
+        <div class="flex gap-2">
+          <button onclick="createRoom()" class="flex-1 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black transition">部屋を作る</button>
+          <button onclick="joinRoom()" class="flex-1 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black transition">部屋に入る</button>
+        </div>
+        <p id="online-status" class="text-xs text-slate-400 text-center mt-3 min-h-[18px]"></p>
+      </div>
+      <button onclick="location.href='../index.html'" class="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">← GAME CENTER メニューへ戻る</button>
+    </div>
+  </div>
+
+  <!-- 1. SEARCH MODAL (エラべール用) -->
+  <div id="modal-search" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-cyan-500/50 rounded-2xl p-5 max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl glow-cyan">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-cyan-300 text-base flex items-center gap-2">
+          🔍 エラべール: 山札から好きなカードを1枚選択
+        </h3>
+        <span class="text-xs text-slate-400 font-mono">DECK SEARCH</span>
+      </div>
+      <p class="text-xs text-slate-400 my-2">
+        現在山札（手札以外のカード）にある一覧です。選択したカードを即座に手札へ追加します。
+      </p>
+
+      <div id="search-card-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 overflow-y-auto p-1 my-2 flex-1">
+        <!-- JS rendered -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. GAME OVER MODAL -->
+  <div id="modal-gameover" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div id="gameover-card" class="bg-slate-900 border-2 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
+      <div id="gameover-icon" class="text-6xl mb-2">🎉</div>
+      <h2 id="gameover-title" class="font-arcade text-3xl font-bold mb-1">VICTORY!</h2>
+      <p id="gameover-subtitle" class="text-sm text-slate-300 mb-5">見事な戦術で勝利を納めました！</p>
+
+      <div class="bg-slate-950/80 rounded-xl p-4 border border-slate-800 text-left space-y-2 text-xs mb-6 font-mono">
+        <div class="flex justify-between">
+          <span class="text-slate-400">総経過ターン数:</span>
+          <span id="stat-turns" class="text-slate-200 font-bold">5</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">最終プレイヤーHP:</span>
+          <span id="stat-player-hp" class="text-cyan-400 font-bold">45 / 100</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">最終CPU HP:</span>
+          <span id="stat-cpu-hp" class="text-purple-400 font-bold">0 / 100</span>
+        </div>
+      </div>
+
+      <button onclick="restartGame()" class="w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-lg shadow-cyan-500/30 transition">
+        もう一度戦う (Play Again)
+      </button>
+    </div>
+  </div>
+
+  <!-- 3. RULES MODAL -->
+  <div id="modal-rules" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-slate-100 text-base flex items-center gap-2">
+          📖 ゲームルール & カード効果一覧
+        </h3>
+        <button onclick="closeRulesModal()" class="text-slate-400 hover:text-slate-200 text-lg">✕</button>
+      </div>
+
+      <div class="overflow-y-auto space-y-4 my-3 text-xs text-slate-300 pr-1">
+        <!-- Basic Rules -->
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1">
+          <h4 class="font-bold text-cyan-300 text-sm mb-1">基本ルール</h4>
+          <p>・<strong>HP:</strong> 各100。先に相手のHPを0にした方の勝利！</p>
+          <p>・<strong>デッキ:</strong> 全10種類各1枚（ハイランダー）。使用後のカードは山札へ戻り毎ターンシャッフルされ、手札が3枚になるようドローします。</p>
+          <p>・<strong>同時セット:</strong> お互いにカードを1枚選び「準備完了」を押すとオープンされます。</p>
+        </div>
+
+        <!-- Priority Rules -->
+        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1">
+          <h4 class="font-bold text-amber-300 text-sm mb-1">発動優先度（スピード）</h4>
+          <p><span class="bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-600 font-bold">優先度 1</span> <strong>まもる / 自己再生</strong> (ダメージを受ける前に発動)</p>
+          <p><span class="bg-rose-950 text-rose-300 px-1.5 py-0.5 rounded border border-rose-600 font-bold">優先度 2</span> <strong>不意打ち</strong> (相手の攻撃より先にカウンター発動)</p>
+          <p><span class="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600 font-bold">優先度 3</span> <strong>その他全カード</strong> (通常処理)</p>
+        </div>
+
+        <!-- Card List -->
+        <div>
+          <h4 class="font-bold text-slate-200 text-sm mb-2">全10枚カード一覧</h4>
+          <div id="rules-card-list" class="space-y-1.5">
+            <!-- JS populated -->
+          </div>
+        </div>
+      </div>
+
+      <button onclick="closeRulesModal()" class="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+        閉じる
+      </button>
+    </div>
+  </div>
+
+  <!-- 4. RESTART CONFIRM MODAL -->
+  <div id="modal-confirm" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-sm w-full text-center shadow-2xl">
+      <h3 class="font-bold text-slate-100 text-base mb-2">🔄 対戦をやり直しますか？</h3>
+      <p class="text-xs text-slate-400 mb-5">現在の対戦状況はリセットされます。</p>
+      <div class="flex gap-2">
+        <button onclick="closeConfirmModal()" class="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+          キャンセル
+        </button>
+        <button onclick="restartGameFromConfirm()" class="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition">
+          リセット実行
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== JAVASCRIPT GAME LOGIC ==================== -->
+  <script>
+    /* ==================== 1. CARD DEFINITIONS ==================== */
+    const ALL_CARDS = [
+      {
+        id: 'focus',
+        name: '集中',
+        type: 'サポート',
+        badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/50',
+        icon: '🧘',
+        priority: 3,
+        isAttack: false,
+        description: '次に使う技の効果（ダメージ量または回復量）を 2倍 にする'
+      },
+      {
+        id: 'chop',
+        name: 'チョップ',
+        type: '攻撃',
+        badgeClass: 'bg-red-500/20 text-red-300 border-red-500/50',
+        icon: '✋',
+        priority: 3,
+        damage: 5,
+        isAttack: true,
+        description: '相手に 5 ダメージを与える'
+      },
+      {
+        id: 'qigong',
+        name: '気功法',
+        type: '特攻',
+        badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+        icon: '💥',
+        priority: 3,
+        damage: 5,
+        isAttack: true,
+        description: '相手に 5 ダメージを与える'
+      },
+      {
+        id: 'recover',
+        name: '自己再生',
+        type: 'サポート',
+        badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50',
+        icon: '💖',
+        priority: 1,
+        heal: 10,
+        isAttack: false,
+        description: '自分のHPを 10 回復する（「集中」で 20 回復）'
+      },
+      {
+        id: 'protect',
+        name: 'まもる',
+        type: 'サポート',
+        badgeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+        icon: '🛡️',
+        priority: 1,
+        isAttack: false,
+        description: '相手の攻撃・特攻を完全無効化（攻撃以外なら空振り）'
+      },
+      {
+        id: 'earthquake',
+        name: '地震',
+        type: '攻撃',
+        badgeClass: 'bg-red-500/20 text-red-300 border-red-500/50',
+        icon: '🌋',
+        priority: 3,
+        damage: 10,
+        isAttack: true,
+        description: '相手に 10 ダメージを与える'
+      },
+      {
+        id: 'extrasensory',
+        name: '神通力',
+        type: '特攻',
+        badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/50',
+        icon: '🔮',
+        priority: 3,
+        damage: 10,
+        isAttack: true,
+        description: '相手に 10 ダメージを与える'
+      },
+      {
+        id: 'searcher',
+        name: 'エラべール',
+        type: 'サポート',
+        badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50',
+        icon: '🔍',
+        priority: 3,
+        isAttack: false,
+        description: '山札の中から好きなカードを 1枚 選んで手札に加える'
+      },
+      {
+        id: 'sucker_punch',
+        name: '不意打ち',
+        type: '攻撃',
+        badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/50',
+        icon: '🗡️',
+        priority: 2,
+        isAttack: true,
+        description: '相手が攻撃時、相手の技の威力を先制して与える'
+      },
+      {
+        id: 'reckless_charge',
+        name: '猪突猛進',
+        type: '攻撃',
+        badgeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/50',
+        icon: '🐗',
+        priority: 3,
+        damage: 15,
+        recoil: 5,
+        isAttack: true,
+        description: '相手に 15 ダメージ（自分も 5 反動 / ガード時反動なし）'
+      }
+    ];
+
+    /* ==================== 2. GAME STATE ==================== */
+    let turn = 1;
+    let playerHp = 100;
+    let cpuHp = 100;
+
+    let playerFocus = false; // Focus buff active
+    let cpuFocus = false;
+
+    let playerHand = []; // Array of card objects (max 3)
+    let cpuHand = [];    // Array of card objects (max 3)
+
+    let selectedPlayerCardIndex = null;
+    let isResolvingTurn = false;
+    let isSoundEnabled = true;
+
+    /* ==================== ONLINE MULTIPLAYER STATE ==================== */
+    let isOnlineMode = false;
+    let isHost = false;
+    let peer = null;
+    let conn = null;
+    let mySetCardId = null;
+    let oppSetCardId = null;
+    let myReadyFlag = false;
+    let oppReadyFlag = false;
+    let roomIdPass = '';
+
+    /* ==================== 3. AUDIO SYNTH (Web Audio API) ==================== */
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function toggleSound() {
+      isSoundEnabled = !isSoundEnabled;
+      document.getElementById('sound-icon').innerText = isSoundEnabled ? '🔊' : '🔇';
+    }
+
+    function playSound(type) {
+      if (!isSoundEnabled) return;
+      initAudio();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === 'select') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(750, now + 0.07);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.07);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      } else if (type === 'ready') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.08);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.18);
+        osc.start(now);
+        osc.stop(now + 0.18);
+      } else if (type === 'attack') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.2);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      } else if (type === 'heal') {
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.connect(g);
+          g.connect(audioCtx.destination);
+          o.frequency.setValueAtTime(freq, now + i * 0.05);
+          g.gain.setValueAtTime(0.12, now + i * 0.05);
+          g.gain.linearRampToValueAtTime(0.01, now + i * 0.05 + 0.09);
+          o.start(now + i * 0.05);
+          o.stop(now + i * 0.05 + 0.09);
+        });
+      } else if (type === 'focus') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(950, now + 0.28);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.28);
+        osc.start(now);
+        osc.stop(now + 0.28);
+      } else if (type === 'shield') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(750, now);
+        osc.frequency.exponentialRampToValueAtTime(280, now + 0.22);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.22);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } else if (type === 'counter') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(750, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.22);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.22);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } else if (type === 'victory') {
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.connect(g);
+          g.connect(audioCtx.destination);
+          o.frequency.setValueAtTime(freq, now + i * 0.11);
+          g.gain.setValueAtTime(0.18, now + i * 0.11);
+          g.gain.linearRampToValueAtTime(0.01, now + i * 0.11 + 0.28);
+          o.start(now + i * 0.11);
+          o.stop(now + i * 0.11 + 0.28);
+        });
+      } else if (type === 'defeat') {
+        [380, 330, 280, 220].forEach((freq, i) => {
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.connect(g);
+          g.connect(audioCtx.destination);
+          o.frequency.setValueAtTime(freq, now + i * 0.14);
+          g.gain.setValueAtTime(0.18, now + i * 0.14);
+          g.gain.linearRampToValueAtTime(0.01, now + i * 0.14 + 0.28);
+          o.start(now + i * 0.14);
+          o.stop(now + i * 0.14 + 0.28);
+        });
+      }
+    }
+
+    /* ==================== 4. INITIALIZATION ==================== */
+    window.onload = function() {
+      initRulesModalContent();
+      isOnlineMode = false;
+      startNewGame();
+      // Show mode select on boot (solo / online)
+      document.getElementById('modal-mode-select').classList.remove('hidden');
+    };
+
+    function startNewGame() {
+      turn = 1;
+      playerHp = 100;
+      cpuHp = 100;
+      playerFocus = false;
+      cpuFocus = false;
+      playerHand = [];
+      cpuHand = [];
+      selectedPlayerCardIndex = null;
+      isResolvingTurn = false;
+      mySetCardId = null;
+      oppSetCardId = null;
+      myReadyFlag = false;
+      oppReadyFlag = false;
+
+      // Draw initial hands
+      refillHand('player');
+      if (isOnlineMode) {
+        cpuHand = [{id:'back1'}, {id:'back2'}, {id:'back3'}];
+      } else {
+        refillHand('cpu');
+      }
+
+      resetPlayedSlots();
+      updateUI();
+      clearLogs();
+      addLog('SYS', '🏁 対戦開始！10枚ハイランダーTCGバトルへようこそ。');
+      addLog('SYS', '手札からカードを1枚選択して「準備完了」を押してください。');
+    }
+
+    function refillHand(who) {
+      if (who === 'cpu' && isOnlineMode) {
+        while (cpuHand.length < 3) {
+          cpuHand.push({id:'back-' + Math.random().toString(36).slice(2)});
+        }
+        return;
+      }
+      const currentHand = (who === 'player') ? playerHand : cpuHand;
+      while (currentHand.length < 3) {
+        const available = ALL_CARDS.filter(c => !currentHand.some(h => h.id === c.id));
+        if (available.length === 0) break;
+        const randomCard = available[Math.floor(Math.random() * available.length)];
+        currentHand.push({ ...randomCard });
+      }
+    }
+
+    /* ==================== ONLINE MULTIPLAYER (PeerJS) ==================== */
+    function showModeSelectModal() {
+      document.getElementById('modal-mode-select').classList.remove('hidden');
+    }
+    function hideModeSelectModal() {
+      document.getElementById('modal-mode-select').classList.add('hidden');
+    }
+    function startSoloFromModal() {
+      isOnlineMode = false;
+      isHost = false;
+      hideModeSelectModal();
+      updateOpponentLabels();
+      startNewGame();
+    }
+    function updateOpponentLabels() {
+      const nameEl = document.getElementById('opponent-name');
+      const typeEl = document.getElementById('opponent-type');
+      const avatarEl = document.getElementById('opponent-avatar');
+      const handEl = document.getElementById('cpu-hand-label');
+      const slotEl = document.getElementById('cpu-slot-label');
+      if (isOnlineMode) {
+        if (nameEl) nameEl.innerText = '相手プレイヤー';
+        if (typeEl) typeEl.innerText = '(オンライン)';
+        if (avatarEl) avatarEl.innerText = '🌐';
+        if (handEl) handEl.innerText = '相手 HAND:';
+        if (slotEl) slotEl.innerText = '相手';
+      } else {
+        if (nameEl) nameEl.innerText = 'ARCADE MASTER';
+        if (typeEl) typeEl.innerText = '(CPU)';
+        if (avatarEl) avatarEl.innerText = '🤖';
+        if (handEl) handEl.innerText = 'CPU HAND:';
+        if (slotEl) slotEl.innerText = 'CPU';
+      }
+    }
+
+    function setOnlineStatus(msg) {
+      const el = document.getElementById('online-status');
+      if (el) el.innerText = msg;
+    }
+
+    function createRoom() {
+      const roomPass = document.getElementById('room-id-input').value.trim();
+      if (!roomPass) { setOnlineStatus('合言葉を入力してね！'); return; }
+      roomIdPass = roomPass;
+      setOnlineStatus('接続待機中… 相手の接続を待っています');
+      isOnlineMode = true;
+      isHost = true;
+      if (peer) { try { peer.destroy(); } catch(e){} peer = null; conn = null; }
+      peer = new Peer('game2-' + roomPass);
+      peer.on('open', (id) => {
+        setOnlineStatus('待機中… 相手が「部屋に入る」を押すのを待っています');
+      });
+      peer.on('connection', (c) => {
+        conn = c;
+        setupConnection();
+      });
+      peer.on('error', (err) => {
+        setOnlineStatus('エラー: ' + (err.message || '接続に失敗しました'));
+      });
+    }
+
+    function joinRoom() {
+      const roomPass = document.getElementById('room-id-input').value.trim();
+      if (!roomPass) { setOnlineStatus('合言葉を入力してね！'); return; }
+      roomIdPass = roomPass;
+      setOnlineStatus('接続中…');
+      isOnlineMode = true;
+      isHost = false;
+      if (peer) { try { peer.destroy(); } catch(e){} peer = null; conn = null; }
+      peer = new Peer();
+      peer.on('open', () => {
+        conn = peer.connect('game2-' + roomPass, { reliable: true });
+        setupConnection();
+      });
+      peer.on('error', (err) => {
+        setOnlineStatus('エラー: ' + (err.message || '接続に失敗しました'));
+      });
+    }
+
+    function setupConnection() {
+      conn.on('open', () => {
+        setOnlineStatus('接続しました！対戦開始');
+        hideModeSelectModal();
+        updateOpponentLabels();
+        startNewGame();
+        addLog('SYS', isHost ? '🌐 オンライン対戦開始！あなたはホストです。' : '🌐 オンライン対戦開始！相手はホストです。');
+      });
+      conn.on('data', (data) => {
+        if (data.type === 'SET_CARD') {
+          oppSetCardId = data.cardId;
+          oppReadyFlag = true;
+          document.getElementById('arena-status-banner').innerText = myReadyFlag ? 'お互いのカードが開かれます...オープン！' : '相手がカードを選びました。あなたも選んで「準備完了」を押してください';
+          if (myReadyFlag && oppSetCardId) {
+            tryExecuteOnlineTurn();
+          }
+        } else if (data.type === 'STATE') {
+          // Host authoritative sync (guest applies)
+          if (!isHost) {
+            playerHp = data.hostCpuHp;
+            cpuHp = data.hostPlayerHp;
+            playerFocus = data.hostCpuFocus;
+            cpuFocus = data.hostPlayerFocus;
+            turn = data.hostTurn;
+            updateUI();
+            checkGameOver();
+          }
+        } else if (data.type === 'RESET') {
+          startNewGame();
+          addLog('SYS', '🔄 相手が対戦をリセットしました！');
+        }
+      });
+      conn.on('close', () => {
+        addLog('SYS', '⚠️ 相手との接続が切れました。');
+      });
+      conn.on('error', (err) => {
+        addLog('SYS', '⚠️ 通信エラー: ' + err);
+      });
+    }
+
+    function handleOnlineReadyClick() {
+      if (selectedPlayerCardIndex === null || isResolvingTurn) return;
+      playSound('ready');
+      const myCard = playerHand[selectedPlayerCardIndex];
+      mySetCardId = myCard.id;
+      myReadyFlag = true;
+      isResolvingTurn = true;
+      updateUI();
+      document.getElementById('arena-status-banner').innerText = 'カードをセットしました！相手のカードを待っています...';
+      if (conn && conn.open) {
+        conn.send({ type: 'SET_CARD', cardId: mySetCardId });
+      }
+      if (oppReadyFlag) {
+        tryExecuteOnlineTurn();
+      }
+    }
+
+    function tryExecuteOnlineTurn() {
+      if (!mySetCardId || !oppSetCardId) return;
+      const myCard = playerHand.find(c => c.id === mySetCardId) || ALL_CARDS.find(c => c.id === mySetCardId);
+      const oppDef = ALL_CARDS.find(c => c.id === oppSetCardId);
+      if (!myCard || !oppDef) return;
+      const myIndex = playerHand.findIndex(c => c.id === mySetCardId);
+      const dummyCpuIndex = 0;
+      executeTurn(myCard, { ...oppDef }, myIndex, dummyCpuIndex);
+    }
+
+    function syncOnlineGameOver() {
+      mySetCardId = null;
+      oppSetCardId = null;
+      myReadyFlag = false;
+      oppReadyFlag = false;
+      if (isHost && conn && conn.open) {
+        conn.send({ type: 'STATE', hostPlayerHp: playerHp, hostCpuHp: cpuHp, hostPlayerFocus: playerFocus, hostCpuFocus: cpuFocus, hostTurn: turn });
+      }
+    }
+
+    /* ==================== 5. UI UPDATES ==================== */
+    function updateUI() {
+      document.getElementById('turn-display').innerText = turn;
+
+      // HP Updates
+      document.getElementById('player-hp-text').innerText = `${playerHp} / 100 HP`;
+      document.getElementById('player-hp-bar').style.width = `${Math.max(0, playerHp)}%`;
+
+      document.getElementById('cpu-hp-text').innerText = `${cpuHp} / 100 HP`;
+      document.getElementById('cpu-hp-bar').style.width = `${Math.max(0, cpuHp)}%`;
+
+      // Focus Badges
+      document.getElementById('player-focus-badge').classList.toggle('hidden', !playerFocus);
+      document.getElementById('cpu-focus-badge').classList.toggle('hidden', !cpuFocus);
+
+      // CPU Hand Backs
+      const cpuHandDiv = document.getElementById('cpu-hand-display');
+      cpuHandDiv.innerHTML = cpuHand.map(() => `
+        <div class="w-8 h-11 rounded-md bg-gradient-to-br from-purple-900 via-slate-900 to-slate-950 border border-purple-500/40 flex items-center justify-center text-[10px] shadow">
+          🎴
+        </div>
+      `).join('');
+
+      // Player Hand
+      renderPlayerHand();
+
+      // Ready Button State
+      const readyBtn = document.getElementById('btn-ready');
+      if (selectedPlayerCardIndex !== null && !isResolvingTurn) {
+        readyBtn.disabled = false;
+        readyBtn.className = "w-full sm:w-48 py-3 px-6 rounded-xl font-bold text-sm tracking-wider transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black shadow-lg shadow-amber-500/30 cursor-pointer animate-pulse";
+      } else {
+        readyBtn.disabled = true;
+        readyBtn.className = "w-full sm:w-48 py-3 px-6 rounded-xl font-bold text-sm tracking-wider transition-all flex items-center justify-center gap-2 bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed";
+      }
+    }
+
+    function renderPlayerHand() {
+      const container = document.getElementById('player-hand-container');
+      container.innerHTML = playerHand.map((card, idx) => {
+        const isSelected = (selectedPlayerCardIndex === idx);
+        return `
+          <div onclick="selectCard(${idx})" 
+            class="card-item relative bg-slate-900/90 border-2 ${isSelected ? 'card-selected border-amber-500' : 'border-slate-800 hover:border-slate-600'} rounded-xl p-3 flex flex-col justify-between cursor-pointer shadow-lg overflow-hidden ${isResolvingTurn ? 'pointer-events-none opacity-75' : ''}">
+            
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold ${card.badgeClass}">
+                ${card.type}
+              </span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/80 border border-slate-700 font-mono text-slate-400">
+                ⚡ 優先度 ${card.priority}
+              </span>
+            </div>
+
+            <div class="flex items-center gap-2.5 my-1.5">
+              <span class="text-2xl p-1 bg-slate-950 rounded-lg border border-slate-800">${card.icon}</span>
+              <div>
+                <h4 class="font-bold text-sm text-slate-100">${card.name}</h4>
+                ${card.damage ? `<span class="text-[11px] text-red-400 font-bold">威力: ${card.damage}</span>` : ''}
+                ${card.heal ? `<span class="text-[11px] text-emerald-400 font-bold">回復: ${card.heal}</span>` : ''}
+              </div>
+            </div>
+
+            <p class="text-[11px] text-slate-400 leading-tight">
+              ${card.description}
+            </p>
+
+            ${isSelected ? `
+              <div class="absolute -top-1 -right-1 bg-amber-500 text-black text-[10px] font-extrabold px-2 py-0.5 rounded-bl-lg">
+                選択中
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectCard(index) {
+      if (isResolvingTurn) return;
+      selectedPlayerCardIndex = index;
+      playSound('select');
+      updateUI();
+    }
+
+    function resetPlayedSlots() {
+      document.getElementById('player-played-slot').innerHTML = `
+        <span class="text-2xl mb-1">❓</span>
+        <span class="text-xs">カード選択中</span>
+      `;
+      document.getElementById('cpu-played-slot').innerHTML = `
+        <span class="text-2xl mb-1">❓</span>
+        <span class="text-xs">思考中...</span>
+      `;
+      document.getElementById('arena-status-banner').innerText = '手札からカードを選択し「準備完了」ボタンを押してください';
+    }
+
+    /* ==================== 6. TURN RESOLUTION & CPU AI ==================== */
+    function handleReadyClick() {
+      if (selectedPlayerCardIndex === null || isResolvingTurn) return;
+      playSound('ready');
+      if (isOnlineMode) {
+        handleOnlineReadyClick();
+        return;
+      }
+      isResolvingTurn = true;
+      updateUI();
+
+      executeTurn();
+    }
+
+    // Smart CPU AI
+    function chooseCpuCard() {
+      // Low HP check -> prioritize Recover
+      const recoverIdx = cpuHand.findIndex(c => c.id === 'recover');
+      if (cpuHp <= 35 && recoverIdx !== -1 && Math.random() < 0.8) {
+        return recoverIdx;
+      }
+
+      // If Player has Focus active, Player is likely to use big attack -> CPU uses Protect or Sucker Punch
+      if (playerFocus) {
+        const protectIdx = cpuHand.findIndex(c => c.id === 'protect');
+        if (protectIdx !== -1 && Math.random() < 0.65) return protectIdx;
+
+        const suckerIdx = cpuHand.findIndex(c => c.id === 'sucker_punch');
+        if (suckerIdx !== -1 && Math.random() < 0.65) return suckerIdx;
+      }
+
+      // If CPU has Focus active, use highest damage attack
+      if (cpuFocus) {
+        const attackCards = cpuHand
+          .map((card, idx) => ({ card, idx }))
+          .filter(item => item.card.isAttack)
+          .sort((a, b) => (b.card.damage || 0) - (a.card.damage || 0));
+
+        if (attackCards.length > 0) {
+          return attackCards[0].idx;
+        }
+      }
+
+      // Default random choice
+      return Math.floor(Math.random() * cpuHand.length);
+    }
+
+    async function executeTurn(forcedPlayerCard, forcedCpuCardDef, forcedPlayerIndex, forcedCpuIndex) {
+      let playerCard, cpuCard, cpuCardIndex;
+      if (forcedPlayerCard) {
+        playerCard = forcedPlayerCard;
+        cpuCard = forcedCpuCardDef;
+        cpuCardIndex = forcedCpuIndex;
+      } else {
+        playerCard = playerHand[selectedPlayerCardIndex];
+        cpuCardIndex = chooseCpuCard();
+        cpuCard = cpuHand[cpuCardIndex];
+      }
+
+      document.getElementById('arena-status-banner').innerText = 'お互いのカードが開かれます...オープン！';
+
+      const playerSlot = document.getElementById('player-played-slot');
+      const cpuSlot = document.getElementById('cpu-played-slot');
+
+      playerSlot.innerHTML = renderSlotCard(playerCard, true);
+      cpuSlot.innerHTML = renderSlotCard(cpuCard, false);
+
+      await delay(700);
+
+      // Flip CPU card
+      cpuSlot.querySelector('.slot-card-inner')?.classList.add('animate-card-flip');
+      cpuSlot.innerHTML = renderSlotCard(cpuCard, true);
+
+      addLog('SYS', `---------------- ターン ${turn} 解決 ----------------`);
+      addLog('PLAYER', `【あなた】: ${playerCard.icon} ${playerCard.name} (優先度 ${playerCard.priority})`);
+      addLog('CPU', `【CPU】: ${cpuCard.icon} ${cpuCard.name} (優先度 ${cpuCard.priority})`);
+
+      await delay(900);
+
+      let playerShielded = false;
+      let cpuShielded = false;
+
+      // ==========================================
+      // STEP 1: PRIORITY 1 RESOLUTION (まもる, 自己再生)
+      // ==========================================
+      if (playerCard.priority === 1) {
+        if (playerCard.id === 'protect') {
+          playerShielded = true;
+          addLog('PLAYER', '🛡️ あなたの「まもる」発動！相手の攻撃を防ぐ体制をとった。');
+          playSound('shield');
+          showFloatingText('player', '🛡️ ガード構え', 'text-blue-300');
+          await delay(750);
+        } else if (playerCard.id === 'recover') {
+          let healAmount = playerFocus ? 20 : 10;
+          playerHp = Math.min(100, playerHp + healAmount);
+          addLog('PLAYER', `💖 あなたの「自己再生」発動！ HPが ${healAmount} 回復！`);
+          if (playerFocus) {
+            addLog('SYS', '🧘 「集中」の効果で回復量が2倍になりました！（集中ストック消費）');
+            playerFocus = false;
+          }
+          playSound('heal');
+          showFloatingText('player', `+${healAmount} HP`, 'text-emerald-400');
+          updateUI();
+          await delay(750);
+        }
+      }
+
+      if (cpuCard.priority === 1) {
+        if (cpuCard.id === 'protect') {
+          cpuShielded = true;
+          addLog('CPU', '🛡️ CPUの「まもる」発動！攻撃を防ぐ体制をとった。');
+          playSound('shield');
+          showFloatingText('cpu', '🛡️ ガード構え', 'text-blue-300');
+          await delay(750);
+        } else if (cpuCard.id === 'recover') {
+          let healAmount = cpuFocus ? 20 : 10;
+          cpuHp = Math.min(100, cpuHp + healAmount);
+          addLog('CPU', `💖 CPUの「自己再生」発動！ HPが ${healAmount} 回復！`);
+          if (cpuFocus) {
+            addLog('SYS', '🧘 CPUの「集中」の効果で回復量が2倍になりました！（集中ストック消費）');
+            cpuFocus = false;
+          }
+          playSound('heal');
+          showFloatingText('cpu', `+${healAmount} HP`, 'text-emerald-400');
+          updateUI();
+          await delay(750);
+        }
+      }
+
+      if (checkGameOver()) { if (isOnlineMode) syncOnlineGameOver(); return; }
+
+      // ==========================================
+      // STEP 2: PRIORITY 2 RESOLUTION (不意打ち)
+      // ==========================================
+      if (playerCard.id === 'sucker_punch') {
+        if (cpuCard.isAttack) {
+          let baseDamage = cpuCard.damage || 5;
+          let finalDamage = playerFocus ? baseDamage * 2 : baseDamage;
+
+          if (cpuShielded) {
+            addLog('PLAYER', '🗡️ あなたの「不意打ち」！しかしCPUの「まもる」にガードされた！');
+            if (playerFocus) {
+              addLog('SYS', '🧘 「集中」ストックが消費されました。');
+              playerFocus = false;
+            }
+            playSound('shield');
+            showFloatingText('cpu', 'ガード！', 'text-blue-300');
+          } else {
+            cpuHp = Math.max(0, cpuHp - finalDamage);
+            addLog('PLAYER', `🗡️ あなたの「不意打ち」が先制ヒット！ 相手の出そうとした技の威力 ${finalDamage} ダメージを与えた！`);
+            if (playerFocus) {
+              addLog('SYS', '🧘 「集中」の効果でダメージが2倍になりました！（集中ストック消費）');
+              playerFocus = false;
+            }
+            playSound('counter');
+            shakeElement('cpu-section');
+            showFloatingText('cpu', `-${finalDamage}`, 'text-rose-400');
+            updateUI();
+          }
+        } else {
+          addLog('PLAYER', '🗡️ あなたの「不意打ち」！しかし相手が非攻撃技のため失敗（空振り）！');
+        }
+        await delay(850);
+      }
+
+      if (cpuCard.id === 'sucker_punch') {
+        if (playerCard.isAttack) {
+          let baseDamage = playerCard.damage || 5;
+          let finalDamage = cpuFocus ? baseDamage * 2 : baseDamage;
+
+          if (playerShielded) {
+            addLog('CPU', '🗡️ CPUの「不意打ち」！しかしあなたの「まもる」でガードした！');
+            if (cpuFocus) {
+              addLog('SYS', '🧘 CPUの「集中」ストックが消費されました。');
+              cpuFocus = false;
+            }
+            playSound('shield');
+            showFloatingText('player', 'ガード！', 'text-blue-300');
+          } else {
+            playerHp = Math.max(0, playerHp - finalDamage);
+            addLog('CPU', `🗡️ CPUの「不意打ち」が先制ヒット！ 相手の出そうとした技の威力 ${finalDamage} ダメージを受けた！`);
+            if (cpuFocus) {
+              addLog('SYS', '🧘 CPUの「集中」の効果でダメージが2倍になりました！（集中ストック消費）');
+              cpuFocus = false;
+            }
+            playSound('counter');
+            shakeElement('player-section');
+            showFloatingText('player', `-${finalDamage}`, 'text-rose-400');
+            updateUI();
+          }
+        } else {
+          addLog('CPU', '🗡️ CPUの「不意打ち」！しかしあなたが非攻撃技のため失敗（空振り）！');
+        }
+        await delay(850);
+      }
+
+      if (checkGameOver()) { if (isOnlineMode) syncOnlineGameOver(); return; }
+
+      // ==========================================
+      // STEP 3: PRIORITY 3 RESOLUTION (その他すべて)
+      // ==========================================
+      if (playerCard.priority === 3) {
+        await processPriority3Card('player', playerCard, cpuCard, cpuShielded);
+      }
+
+      if (checkGameOver()) { if (isOnlineMode) syncOnlineGameOver(); return; }
+
+      if (cpuCard.priority === 3) {
+        await processPriority3Card('cpu', cpuCard, playerCard, playerShielded);
+      }
+
+      if (checkGameOver()) { if (isOnlineMode) syncOnlineGameOver(); return; }
+
+      // Check Protect validity log
+      if (playerCard.id === 'protect' && !cpuCard.isAttack) {
+        addLog('PLAYER', '🛡️ あなたの「まもる」は空振りに終わった。（相手が攻撃技を出していない）');
+      }
+      if (cpuCard.id === 'protect' && !playerCard.isAttack) {
+        addLog('CPU', '🛡️ CPUの「まもる」は空振りに終わった。（相手が攻撃技を出していない）');
+      }
+
+      // Recycle played cards (remove from current hand, will be auto-refilled next turn)
+      playerHand.splice(selectedPlayerCardIndex, 1);
+      cpuHand.splice(cpuCardIndex, 1);
+
+      // Refill hands
+      refillHand('player');
+      refillHand('cpu');
+
+      // Next Turn setup
+      turn++;
+      selectedPlayerCardIndex = null;
+      isResolvingTurn = false;
+      if (isOnlineMode) {
+        mySetCardId = null;
+        oppSetCardId = null;
+        myReadyFlag = false;
+        oppReadyFlag = false;
+        if (isHost && conn && conn.open) {
+          conn.send({ type: 'STATE', hostPlayerHp: playerHp, hostCpuHp: cpuHp, hostPlayerFocus: playerFocus, hostCpuFocus: cpuFocus, hostTurn: turn });
+        }
+      }
+
+      updateUI();
+      document.getElementById('arena-status-banner').innerText = `ターン ${turn}: カードを選択して「準備完了」を押してください`;
+    }
+
+    async function processPriority3Card(who, card, opponentCard, isOpponentShielded) {
+      const isPlayer = (who === 'player');
+      const userName = isPlayer ? 'あなた' : (isOnlineMode ? '相手' : 'CPU');
+      const userTag = isPlayer ? 'PLAYER' : 'CPU';
+      const targetTag = isPlayer ? 'cpu' : 'player';
+      const targetSection = isPlayer ? 'cpu-section' : 'player-section';
+
+      const hasFocus = isPlayer ? playerFocus : cpuFocus;
+
+      // 1. FOCUS
+      if (card.id === 'focus') {
+        if (isPlayer) playerFocus = true;
+        else cpuFocus = true;
+        addLog(userTag, `🧘 ${userName}の「集中」！ 次に使う技の効果が2倍になる！`);
+        playSound('focus');
+        showFloatingText(isPlayer ? 'player' : 'cpu', '🧘 集中 2x!', 'text-amber-300');
+        updateUI();
+        await delay(750);
+        return;
+      }
+
+      // 2. SEARCHER
+      if (card.id === 'searcher') {
+        addLog(userTag, `🔍 ${userName}の「エラべール」！ 山札から好きなカードを探す...`);
+        playSound('select');
+        if (isPlayer) {
+          await openSearchModal();
+        } else {
+          if (isOnlineMode) {
+            addLog('CPU', `🔍 相手が「エラべール」を使用しました！`);
+          } else {
+          // CPU search logic
+          const availableDeck = ALL_CARDS.filter(c => !cpuHand.some(h => h.id === c.id));
+          if (availableDeck.length > 0) {
+            let chosen = availableDeck.find(c => c.id === 'reckless_charge') ||
+                         availableDeck.find(c => c.id === 'earthquake') ||
+                         availableDeck[Math.floor(Math.random() * availableDeck.length)];
+            cpuHand.push({ ...chosen });
+            addLog('CPU', `🔍 CPUは山札から「${chosen.name}」を手札に加えた！`);
+          }
+          }
+        }
+        await delay(750);
+        return;
+      }
+
+      // 3. ATTACK CARDS
+      if (card.isAttack) {
+        let baseDamage = card.damage || 5;
+        let finalDamage = hasFocus ? baseDamage * 2 : baseDamage;
+
+        if (isOpponentShielded) {
+          addLog(userTag, `💥 ${userName}の「${card.name}」！しかし相手の「まもる」で完全ガードされた！`);
+          if (card.id === 'reckless_charge') {
+            addLog('SYS', `🐗 ガードされたため、${userName}の「猪突猛進」反動ダメージも無効化！`);
+          }
+          if (hasFocus) {
+            addLog('SYS', `🧘 ${userName}の「集中」ストックが消費されました。`);
+            if (isPlayer) playerFocus = false; else cpuFocus = false;
+          }
+          playSound('shield');
+          showFloatingText(targetTag, 'ガード！', 'text-blue-300');
+        } else {
+          if (isPlayer) {
+            cpuHp = Math.max(0, cpuHp - finalDamage);
+          } else {
+            playerHp = Math.max(0, playerHp - finalDamage);
+          }
+
+          addLog(userTag, `💥 ${userName}の「${card.name}」！ 相手に ${finalDamage} ダメージ！`);
+          if (hasFocus) {
+            addLog('SYS', `🧘 「集中」の効果でダメージが2倍になりました！（集中ストック消費）`);
+            if (isPlayer) playerFocus = false; else cpuFocus = false;
+          }
+
+          playSound('attack');
+          shakeElement(targetSection);
+          showFloatingText(targetTag, `-${finalDamage}`, 'text-red-400');
+          updateUI();
+
+          // Reckless Charge Recoil
+          if (card.id === 'reckless_charge') {
+            let recoil = card.recoil || 5;
+            if (isPlayer) {
+              playerHp = Math.max(0, playerHp - recoil);
+            } else {
+              cpuHp = Math.max(0, cpuHp - recoil);
+            }
+            addLog(userTag, `🐗 ${userName}は「猪突猛進」の反動で ${recoil} ダメージを受けた！`);
+            showFloatingText(isPlayer ? 'player' : 'cpu', `-${recoil} 反動`, 'text-orange-400');
+            updateUI();
+          }
+        }
+        await delay(750);
+      }
+    }
+
+    /* ==================== 7. SEARCH MODAL LOGIC ==================== */
+    function openSearchModal() {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('modal-search');
+        const listDiv = document.getElementById('search-card-list');
+
+        const availableInDeck = ALL_CARDS.filter(c => !playerHand.some(h => h.id === c.id));
+
+        listDiv.innerHTML = availableInDeck.map(card => `
+          <div onclick="selectSearchCard('${card.id}')" 
+            class="bg-slate-950 border border-slate-800 hover:border-cyan-400 rounded-xl p-3 cursor-pointer transition flex flex-col justify-between hover:scale-105 shadow-md">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-[10px] px-2 py-0.5 rounded-full border ${card.badgeClass}">${card.type}</span>
+              <span class="text-[10px] text-slate-400 font-mono">⚡ P${card.priority}</span>
+            </div>
+            <div class="flex items-center gap-2 my-1">
+              <span class="text-xl">${card.icon}</span>
+              <span class="font-bold text-sm text-slate-100">${card.name}</span>
+            </div>
+            <p class="text-[10px] text-slate-400">${card.description}</p>
+          </div>
+        `).join('');
+
+        modal.classList.remove('hidden');
+        window._searchModalResolve = resolve;
+      });
+    }
+
+    function selectSearchCard(cardId) {
+      const modal = document.getElementById('modal-search');
+      modal.classList.add('hidden');
+
+      const selectedCard = ALL_CARDS.find(c => c.id === cardId);
+      if (selectedCard) {
+        playerHand.push({ ...selectedCard });
+        addLog('PLAYER', `🔍 あなたは山札から「${selectedCard.name}」を手札に加えた！`);
+        playSound('select');
+        updateUI();
+      }
+
+      if (window._searchModalResolve) {
+        window._searchModalResolve();
+        window._searchModalResolve = null;
+      }
+    }
+
+    /* ==================== 8. GAME OVER & MODAL HELPERS ==================== */
+    function checkGameOver() {
+      if (playerHp <= 0 || cpuHp <= 0) {
+        setTimeout(showGameOverModal, 400);
+        return true;
+      }
+      return false;
+    }
+
+    function showGameOverModal() {
+      const modal = document.getElementById('modal-gameover');
+      const card = document.getElementById('gameover-card');
+      const title = document.getElementById('gameover-title');
+      const subtitle = document.getElementById('gameover-subtitle');
+      const icon = document.getElementById('gameover-icon');
+
+      document.getElementById('stat-turns').innerText = turn;
+      document.getElementById('stat-player-hp').innerText = `${playerHp} / 100`;
+      document.getElementById('stat-cpu-hp').innerText = `${cpuHp} / 100`;
+
+      if (playerHp > 0 && cpuHp <= 0) {
+        icon.innerText = '🎉';
+        title.innerText = 'VICTORY!';
+        title.className = 'font-arcade text-3xl font-bold text-amber-300 mb-1';
+        subtitle.innerText = '完璧な戦術でマスターを打ち破った！';
+        card.className = 'bg-slate-900 border-2 border-amber-500 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl glow-gold relative overflow-hidden';
+        playSound('victory');
+      } else if (playerHp <= 0 && cpuHp > 0) {
+        icon.innerText = '💀';
+        title.innerText = 'DEFEAT...';
+        title.className = 'font-arcade text-3xl font-bold text-rose-500 mb-1';
+        subtitle.innerText = 'CPUの策略に敗北した...もう一度挑戦しよう！';
+        card.className = 'bg-slate-900 border-2 border-rose-600 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl glow-rose relative overflow-hidden';
+        playSound('defeat');
+      } else {
+        icon.innerText = '⚖️';
+        title.innerText = 'DRAW';
+        title.className = 'font-arcade text-3xl font-bold text-cyan-300 mb-1';
+        subtitle.innerText = '両者相打ち！白熱した好勝負だった。';
+        card.className = 'bg-slate-900 border-2 border-cyan-500 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl glow-cyan relative overflow-hidden';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function restartGame() {
+      document.getElementById('modal-gameover').classList.add('hidden');
+      if (isOnlineMode && conn && conn.open) {
+        conn.send({ type: 'RESET' });
+      }
+      startNewGame();
+    }
+
+    function confirmRestartModal() {
+      document.getElementById('modal-confirm').classList.remove('hidden');
+    }
+
+    function closeConfirmModal() {
+      document.getElementById('modal-confirm').classList.add('hidden');
+    }
+
+    function restartGameFromConfirm() {
+      closeConfirmModal();
+      if (isOnlineMode && conn && conn.open) {
+        conn.send({ type: 'RESET' });
+      }
+      startNewGame();
+    }
+
+    // Floating text FX
+    function showFloatingText(targetKey, text, colorClass) {
+      const container = document.getElementById(`${targetKey}-float-container`);
+      if (!container) return;
+
+      const el = document.createElement('div');
+      el.className = `font-arcade font-bold text-xl sm:text-2xl drop-shadow-md animate-float-text ${colorClass}`;
+      el.innerText = text;
+
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 1300);
+    }
+
+    // Shake FX
+    function shakeElement(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('animate-shake');
+      setTimeout(() => el.classList.remove('animate-shake'), 420);
+    }
+
+    // Played Slot Renderer
+    function renderSlotCard(card, isRevealed) {
+      if (!isRevealed) {
+        return `
+          <div class="slot-card-inner w-28 sm:w-36 h-36 sm:h-44 rounded-xl bg-gradient-to-br from-purple-900 via-slate-900 to-indigo-950 border-2 border-purple-500/50 flex flex-col items-center justify-center text-purple-300 shadow-xl">
+            <span class="text-3xl mb-1">🎴</span>
+            <span class="font-arcade text-xs">SET READY</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="slot-card-inner w-28 sm:w-36 h-36 sm:h-44 rounded-xl bg-slate-900 border-2 border-slate-700 p-2 flex flex-col justify-between text-left shadow-xl">
+          <div class="flex justify-between items-center">
+            <span class="text-[9px] px-1.5 py-0.5 rounded border ${card.badgeClass}">${card.type}</span>
+            <span class="text-[9px] font-mono text-slate-400">⚡P${card.priority}</span>
+          </div>
+          <div class="text-center my-1">
+            <span class="text-2xl sm:text-3xl block">${card.icon}</span>
+            <span class="font-bold text-xs text-slate-100 block mt-1">${card.name}</span>
+          </div>
+          <span class="text-[9px] text-slate-400 text-center block leading-tight truncate">${card.description}</span>
+        </div>
+      `;
+    }
+
+    function delay(ms) {
+      return new Promise(res => setTimeout(res, ms));
+    }
+
+    // Log console manager
+    function addLog(tag, msg) {
+      const logDiv = document.getElementById('battle-log');
+      const entry = document.createElement('div');
+      entry.className = 'leading-relaxed text-[11px] border-b border-slate-800/40 pb-1';
+
+      let tagSpan = '';
+      if (tag === 'PLAYER') tagSpan = `<span class="text-cyan-400 font-bold">[PLAYER]</span>`;
+      else if (tag === 'CPU') tagSpan = `<span class="text-purple-400 font-bold">[CPU]</span>`;
+      else tagSpan = `<span class="text-amber-400 font-bold">[SYS]</span>`;
+
+      entry.innerHTML = `${tagSpan} ${msg}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('battle-log').innerHTML = '';
+    }
+
+    // Rules modal handlers
+    function openRulesModal() {
+      document.getElementById('modal-rules').classList.remove('hidden');
+    }
+
+    function closeRulesModal() {
+      document.getElementById('modal-rules').classList.add('hidden');
+    }
+
+    function initRulesModalContent() {
+      const list = document.getElementById('rules-card-list');
+      list.innerHTML = ALL_CARDS.map(card => `
+        <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">${card.icon}</span>
+            <div>
+              <span class="font-bold text-slate-200">${card.name}</span>
+              <span class="text-[10px] ml-2 px-1.5 py-0.5 rounded border ${card.badgeClass}">${card.type}</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] text-slate-400 block font-mono">⚡ 優先度 ${card.priority}</span>
+            <span class="text-[10px] text-slate-300 block">${card.description}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
